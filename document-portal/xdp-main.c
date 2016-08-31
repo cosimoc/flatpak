@@ -367,11 +367,10 @@ validate_fd_common (int fd,
   return TRUE;
 }
 
-static char *
-resolve_flatpak_app_path (const char *path,
-                          const char *app_id)
+static FlatpakInstalledRef *
+find_app_installed_ref (const char *app_id)
 {
-  g_autoptr(FlatpakInstalledRef) app_ref = NULL;
+  FlatpakInstalledRef *app_ref = NULL;
 
   g_autoptr(FlatpakInstallation) user_install =
     flatpak_installation_new_user (NULL, NULL);
@@ -398,6 +397,14 @@ resolve_flatpak_app_path (const char *path,
         }
     }
 
+  return app_ref;
+}
+
+static char *
+resolve_flatpak_app_path (const char *path,
+                          const char *app_id)
+{
+  g_autoptr(FlatpakInstalledRef) app_ref = find_app_installed_ref (app_id);
   if (!app_ref)
     return NULL;
 
