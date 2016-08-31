@@ -368,8 +368,8 @@ validate_fd_common (int fd,
 }
 
 static char *
-resolve_flatpak_path (const char *path,
-                      const char *app_id)
+resolve_flatpak_app_path (const char *path,
+                          const char *app_id)
 {
   g_autoptr(FlatpakInstalledRef) app_ref = NULL;
 
@@ -460,7 +460,7 @@ validate_sandboxed_fd (int fd,
     {
 
       rel_path += strlen ("/app");
-      app_path = resolve_flatpak_path (rel_path, app_id);
+      app_path = resolve_flatpak_app_path (rel_path, app_id);
     }
 
   if (app_path == NULL)
