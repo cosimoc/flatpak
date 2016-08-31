@@ -401,6 +401,57 @@ find_app_installed_ref (const char *app_id)
 }
 
 static char *
+resolve_flatpak_usr_path (const char *path,
+                          const char *app_id)
+{
+  g_autoptr(FlatpakInstalledRef) app_ref = find_app_installed_ref (app_id);
+  if (!app_ref)
+    return NULL;
+
+  g_autoptr(GBytes) metadata = flatpak_installed_ref_load_metadata (app_ref, NULL, NULL);
+  if (!metadata)
+    return NULL;
+
+  gsize metadata_size;
+  const guint8* metadata_contents = g_bytes_get_data (metadata, &metadata_size);
+
+  g_autoptr(GKeyFile) key_file = g_key_file_new ();
+  gboolean res = g_key_file_load_from_data (key_file,
+                                            (const char *) metadata_contents, metadata_size,
+                                            G_KEY_FILE_NONE, NULL);
+  if (!res)
+    return NULL;
+
+  g_autofree char *runtime = g_key_file_get_string (key_file,
+                                                    "Application", "runtime",
+                                                    NULL);
+  if (!runtime)
+    return NULL;
+
+  g_auto(GStrv) runtime_parts = g_strsplit (runtime, "/", 0);
+  if (g_strv_length (runtime_parts) != 3)
+    return NULL;
+
+  g_autofree char *runtime_ref = flatpak_compose_ref (FALSE,
+                                                      runtime_parts[0],
+                                                      runtime_parts[2],
+                                                      runtime_parts[1],
+                                                      NULL);
+  if (!runtime_ref)
+    return NULL;
+
+  g_autoptr(FlatpakDeploy) runtime_deploy =
+    flatpak_find_deploy_for_ref (runtime_ref, NULL, NULL);
+  if (!runtime_deploy)
+    return NULL;
+
+  g_autoptr(GFile) deploy_dir = flatpak_deploy_get_files (runtime_deploy);
+  g_autoptr(GFile) usr_path = g_file_resolve_relative_path (deploy_dir, path);
+
+  return g_file_get_path (usr_path);
+}
+
+static char *
 resolve_flatpak_app_path (const char *path,
                           const char *app_id)
 {
@@ -456,18 +507,24 @@ validate_sandboxed_fd (int fd,
                        GError **error)
 {
   char sandboxed_path_buffer[PATH_MAX + 1];
-  char *rel_path;
+  char *app_rel_path, *usr_rel_path;
   g_autofree char *app_path = NULL;
 
   if (!validate_fd_common (fd, st_buf, sandboxed_path_buffer, error))
     return FALSE;
 
-  rel_path = strstr (sandboxed_path_buffer, "/app");
-  if (rel_path != NULL)
-    {
+  app_rel_path = strstr (sandboxed_path_buffer, "/app");
+  usr_rel_path = strstr (sandboxed_path_buffer, "/usr");
 
-      rel_path += strlen ("/app");
-      app_path = resolve_flatpak_app_path (rel_path, app_id);
+  if (app_rel_path != NULL)
+    {
+      app_rel_path += strlen ("/app");
+      app_path = resolve_flatpak_app_path (app_rel_path, app_id);
+    }
+  else if (usr_rel_path != NULL)
+    {
+      usr_rel_path += strlen ("/usr");
+      app_path = resolve_flatpak_usr_path (usr_rel_path, app_id);
     }
 
   if (app_path == NULL)
